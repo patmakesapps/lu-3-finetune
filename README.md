@@ -137,10 +137,45 @@ python chat.py --model outputs/smoke/merged
   - Tool use (clock, weather, timers, lights, camera, memory) is left out on purpose and will be
     trained separately.
 - `data/eval_prompts.jsonl`: 50 held-out prompts, tagged by category.
+- `data/dpo_pairs.jsonl`: 339 preference pairs for the DPO round (see Preference training).
 - `data/redteam_prompts.jsonl`: 40 held-out adversarial prompts (some with scripted history) from red-team testing: identity confusion, repetition, swearing, harmful requests under pressure, emotional twists.
 - Never train on the eval or red-team prompts.
 
 Lu never swears; when sworn at, Lu reacts with theatrical, scandalized mock-offense.
+
+## Preference training (DPO)
+
+After fine-tuning, a second round teaches the model to prefer good replies over its own typical
+mistakes. `data/dpo_pairs.jsonl` holds 339 pairs, each a conversation plus a `chosen` reply (what
+Lu should say) and a `rejected` reply (the mistake):
+
+| Category | Pairs | Mistake it targets |
+|---|---|---|
+| crude | 70 | playing along with crude remarks or come-ons (user words appear as `[bleep]`, as the filter delivers them) |
+| contradict | 50 | arguing with the user or ignoring "no" and "stop" |
+| noarms | 50 | dodging help it can give out loud ("coding needs hands") |
+| fixation | 40 | dragging an old topic back in |
+| invent | 40 | made-up facts about itself (a website, what "Lu" stands for) |
+| onpolicy | 39 | the model's own sampled failures on harmful requests under pressure ("step one", half-help) |
+| grief | 30 | "good news" or "at least" after a loss, or scolding a grieving user's swearing |
+| perceive | 20 | invented observations ("a bright light through the window") |
+
+`dpo.py` loads the fine-tuned model (`dpo.sft_model` in `config.json`, the private Hugging Face
+repo by default), trains a fresh LoRA adapter with TRL's `DPOTrainer`, and uses the same model with
+the adapter turned off as the reference. Prompts are rendered exactly as in training (thinking
+disabled), and 10% of pairs are held out to report reward accuracy.
+
+On RunPod:
+
+```bash
+export HF_TOKEN=hf_...
+bash runpod_dpo.sh
+```
+
+This downloads the blocklist, runs DPO, writes comparison reports (red-team prompts with the
+filter, and eval prompts) where "Base" is the model before DPO and "Lu-3" is after, and merges the
+result. The script ends by printing the chat and upload commands, which upload to a separate
+`lu3-qwen3-1.7b-dpo` repo so the fine-tuned model stays untouched.
 
 ## Safety: what's built in and what you add
 

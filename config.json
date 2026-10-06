@@ -15,5 +15,19 @@
   "validation_fraction": 0.05,
   "max_new_tokens": 96,
   "repetition_penalty": 1.1,
-  "chat_history_exchanges": 12
+  "chat_history_exchanges": 12,
+  "dpo": {
+    "sft_model": "patkearney/lu3-qwen3-1.7b",
+    "data": "data/dpo_pairs.jsonl",
+    "output_dir": "outputs/lu3-1.7b-dpo",
+    "beta": 0.1,
+    "learning_rate": 2e-05,
+    "epochs": 2,
+    "lora_rank": 16,
+    "lora_alpha": 32,
+    "lora_dropout": 0.05,
+    "batch_size": 4,
+    "gradient_accumulation_steps": 2,
+    "validation_fraction": 0.1
+  }
 }
