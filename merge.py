@@ -1,4 +1,5 @@
 import argparse
+import gc
 import json
 from pathlib import Path
 
@@ -52,6 +53,10 @@ merged = merged.to(torch.bfloat16)
 merged.save_pretrained(args.output_dir, safe_serialization=True)
 tokenizer.save_pretrained(args.output_dir)
 print(f"Saved merged model to {args.output_dir}")
+
+# Free the in-memory copies before reloading; at 4B, two float32 copies can exceed a pod's RAM.
+del model, merged, base, adapter_logits, merged_logits
+gc.collect()
 
 reloaded = AutoModelForCausalLM.from_pretrained(args.output_dir, dtype=torch.float32).eval()
 with torch.no_grad():
