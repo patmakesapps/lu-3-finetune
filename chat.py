@@ -14,7 +14,7 @@ with (project_dir / "config.json").open(encoding="utf-8") as file:
 parser = argparse.ArgumentParser(description="Chat with a merged Lu-3 model.")
 parser.add_argument("--model", default=str(project_dir / config["output_dir"] / "merged"),
                     help="Merged model folder, or a Hugging Face model id such as Qwen/Qwen3-0.6B.")
-parser.add_argument("--history", type=int, default=3, help="Exchanges of history to keep (training used up to 3).")
+parser.add_argument("--history", type=int, default=config["chat_history_exchanges"], help="Exchanges of history to keep.")
 parser.add_argument("--greedy", action="store_true", help="Disable sampling.")
 args = parser.parse_args()
 
@@ -27,7 +27,12 @@ model = AutoModelForCausalLM.from_pretrained(
 ).to(device).eval()
 streamer = TextStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
 
-settings = {"max_new_tokens": config["max_new_tokens"], "pad_token_id": tokenizer.pad_token_id, "streamer": streamer}
+settings = {
+    "max_new_tokens": config["max_new_tokens"],
+    "repetition_penalty": config["repetition_penalty"],
+    "pad_token_id": tokenizer.pad_token_id,
+    "streamer": streamer,
+}
 if args.greedy:
     settings.update(do_sample=False, temperature=None, top_p=None, top_k=None)
 else:

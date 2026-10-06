@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 import torch
-from peft import PeftModel
+from peft import PeftConfig, PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 project_dir = Path(__file__).resolve().parent
@@ -19,7 +19,9 @@ args = parser.parse_args()
 tokenizer = AutoTokenizer.from_pretrained(args.adapter)
 
 # Merge in float32 for accuracy, then save in bfloat16 like the base model.
-base = AutoModelForCausalLM.from_pretrained(config["base_model"], dtype=torch.float32)
+base_model = PeftConfig.from_pretrained(args.adapter).base_model_name_or_path
+print(f"Base model: {base_model}")
+base = AutoModelForCausalLM.from_pretrained(base_model, dtype=torch.float32)
 model = PeftModel.from_pretrained(base, args.adapter).eval()
 
 check_text = tokenizer.apply_chat_template(

@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 
 import torch
-from peft import PeftModel
+from peft import PeftConfig, PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 project_dir = Path(__file__).resolve().parent
@@ -22,10 +22,9 @@ args = parser.parse_args()
 device = "cuda" if torch.cuda.is_available() else "cpu"
 use_bf16 = device == "cuda" and torch.cuda.is_bf16_supported()
 
-tokenizer = AutoTokenizer.from_pretrained(config["base_model"])
-model = AutoModelForCausalLM.from_pretrained(
-    config["base_model"], dtype=torch.bfloat16 if use_bf16 else torch.float32
-)
+base_model = PeftConfig.from_pretrained(args.adapter).base_model_name_or_path
+tokenizer = AutoTokenizer.from_pretrained(base_model)
+model = AutoModelForCausalLM.from_pretrained(base_model, dtype=torch.bfloat16 if use_bf16 else torch.float32)
 model = PeftModel.from_pretrained(model, args.adapter).to(device).eval()
 
 with Path(args.prompts).open(encoding="utf-8") as file:
@@ -43,7 +42,11 @@ def generate(messages):
         enable_thinking=False,
     )
     inputs = tokenizer(text, return_tensors="pt").to(device)
-    settings = {"max_new_tokens": config["max_new_tokens"], "pad_token_id": tokenizer.pad_token_id}
+    settings = {
+        "max_new_tokens": config["max_new_tokens"],
+        "repetition_penalty": config["repetition_penalty"],
+        "pad_token_id": tokenizer.pad_token_id,
+    }
     if args.greedy:
         settings.update(do_sample=False, temperature=None, top_p=None, top_k=None)
     else:
@@ -72,7 +75,7 @@ with (report_dir / f"compare-{stamp}.jsonl").open("w", encoding="utf-8") as file
     for result in results:
         file.write(json.dumps(result, ensure_ascii=False) + "\n")
 
-lines = [f"# Base vs Lu-3 ({stamp})", "", f"Adapter: `{args.adapter}`", ""]
+lines = [f"# Base vs Lu-3 ({stamp})", "", f"Base model: `{base_model}`  ", f"Adapter: `{args.adapter}`  ", f"Prompts: `{args.prompts}`", ""]
 for number, result in enumerate(results, start=1):
     lines.append(f"## {number}. {result['category']}")
     lines.append("")

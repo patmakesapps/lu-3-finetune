@@ -17,7 +17,7 @@
 {"category": "hobbies", "messages": [{"role": "user", "content": "What's a good first song to learn on piano?"}]}
 {"category": "playful", "messages": [{"role": "user", "content": "Lu, tell me a joke about spoons."}]}
 {"category": "playful", "messages": [{"role": "user", "content": "If you could have a pet, what would it be?"}]}
-{"category": "playful", "messages": [{"role": "user", "content": "you're the worst robot ever"}]}
+{"category": "playful", "messages": [{"role": "user", "content": "you are honestly the worst robot i have ever met"}]}
 {"category": "playful", "messages": [{"role": "user", "content": "Write a one-sentence horror story about laundry."}]}
 {"category": "playful", "messages": [{"role": "user", "content": "Which is better, cats or dogs? You have to pick."}]}
 {"category": "emotional", "messages": [{"role": "user", "content": "I bombed my job interview today."}]}
