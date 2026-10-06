@@ -1,64 +1,50 @@
 # Lu-3
 
-A small conversational AI for Lumalien robots.
+Fine-tuning a conversational personality for Lu-3, a household robot companion from Lumalien:
+a small three-legged robot with a rotating dome head and no arms. Lu is theatrical, cheeky,
+loyal, short-spoken, and built for voice conversation in homes with kids.
 
 ## Goal
 
-Fast, natural household conversation running locally
-on a Jetson Orin Nano 8GB.
-
-Replies should usually be one to three sentences.
-Actual inference speed will be measured when the Jetson arrives.
+Fast, natural household conversation running locally on a Jetson Orin Nano 8GB, with replies
+of one to three spoken sentences. Inference speed will be measured on the Jetson.
 
 ## Base model
 
-Qwen/Qwen3-1.7B, with thinking disabled (set in `config.json`).
-The first run used Qwen3-0.6B; red-team testing showed it was too small to
-hold a conversation together, so v3 moves to 1.7B.
+`Qwen/Qwen3-4B`, fine-tuned with LoRA.
 
-The system prompt in `config.json` is not baked into the weights: every
-training example starts with it, so whatever runs Lu (chat.py, the robot)
-must send the same prompt for the trained behavior to hold.
-
-We use LoRA to customize the existing model's
-conversational behavior.
+- Qwen3-4B is a hybrid model: thinking (reasoning before answering) can be turned on per
+  request. Lu is trained and run with thinking off, because reasoning adds seconds of silence
+  before each spoken reply. If thinking is wanted later (for example, planning tool use), the
+  training data will need some thinking-mode examples, since training only on thinking-off data
+  can weaken that mode.
+- History: the first runs used Qwen3-0.6B, then Qwen3-1.7B. Both picked up the personality but
+  lost track of long, chaotic conversations under red-team testing (who said what, whether the
+  user was a child), so the project moved to 4B. At Q4 it is about 2.5 GB, which still leaves
+  room on the 8 GB Jetson for speech-to-text and text-to-speech.
+- The system prompt in `config.json` is not baked into the weights. Every training example
+  starts with it, so whatever runs Lu (chat.py, the robot) must send the same prompt for the
+  trained behavior to hold.
 
 ## Pipeline
 
-1. Prepare and validate conversation examples locally.
-2. Convert conversations into training tokens.
-3. Fine-tune with LoRA on RunPod.
-4. Compare the original model and fine-tuned model.
-5. Merge the LoRA adjustments into the model.
-6. Export to GGUF and quantize.
-7. Run and benchmark locally on the Jetson.
+1. Write and validate conversation data (`data/train.jsonl`).
+2. Fine-tune with LoRA on RunPod (`train.py`), holding out 5% of conversations to watch for
+   memorization.
+3. Compare the base and fine-tuned models on held-out prompts (`compare.py`).
+4. Merge the adapter into the model (`merge.py`) and test it (`chat.py`).
+5. Upload to a private Hugging Face repo (`push_to_hub.py`).
+6. Export to GGUF and quantize for llama.cpp (`export_gguf.sh`, `gguf_compare.py`).
+7. Run and benchmark on the Jetson.
 
-## RunPod training environment
+## Training on RunPod
 
-Selected template: Runpod Pytorch 2.8.0
+Template: Runpod Pytorch 2.8.0 (`runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404`), using its
+GPU build of PyTorch. Extra libraries are pinned in `requirements.txt` (transformers 4.57.1,
+peft 0.17.1, accelerate 1.10.1). A GPU with 24 GB, such as an RTX 4090, is enough for the 4B
+LoRA run.
 
-Container image:
-
-`runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404`
-
-We will use the template's installed GPU-enabled PyTorch.
-
-Additional training libraries are listed in requirements.txt:
-
-- transformers==4.57.1
-- peft==0.17.1
-- accelerate==1.10.1
-
-Any GPU with 24 GB or more is plenty for the 1.7B LoRA run.
-Training holds out 5% of conversations (`validation_fraction`) and reports `eval_loss`
-four times per epoch: if it stops falling while training loss keeps dropping, the model
-is memorizing.
-
-### Training on RunPod
-
-1. In RunPod, add a secret or environment variable named `HF_TOKEN` with a
-   Hugging Face write token (needed only for the upload step).
-2. Launch a pod from the PyTorch template, open its terminal, and run:
+1. Launch a pod from the template, open its terminal, and run:
 
    ```bash
    cd /workspace
@@ -67,51 +53,42 @@ is memorizing.
    bash runpod.sh
    ```
 
-   This installs the pinned libraries, validates the data, trains, writes
-   comparison reports for `eval_prompts.jsonl` and `redteam_prompts.jsonl`
-   to `outputs/compare/`, and merges the model.
-3. Talk to Lu on the pod: `python chat.py`
-4. Upload: `python push_to_hub.py` creates a private Hugging Face repo
-   (`<your-user>/lu3-qwen3-1.7b`) with the merged model at the root, the
-   adapter in `adapter/`, the comparison reports in `reports/`, and a model
-   card. Use `--public` to make a new repo public, `--repo name` to pick a name.
-5. Stop the pod. Everything you need is now on Hugging Face.
+   This installs the pinned libraries, validates the data, trains, writes comparison reports
+   for `eval_prompts.jsonl` and `redteam_prompts.jsonl` to `outputs/compare/`, and merges the
+   model.
+2. Talk to Lu on the pod: `python chat.py`
+3. Upload: set `HF_TOKEN` to a Hugging Face write token, then run `python push_to_hub.py`. It
+   creates a private repo (`<your-user>/lu3-qwen3-4b`) with the merged model at the root, the
+   adapter in `adapter/`, GGUF files in `gguf/` if exported, comparison reports in `reports/`,
+   and a model card. `--public` makes a new repo public; `--repo name` picks a name.
+4. Stop the pod. The container disk is erased when it stops, so upload first.
 
-Locally (or on the Jetson), load it with
-`python chat.py --model <your-user>/lu3-qwen3-1.7b`.
-
-## Local development
-
-Project folder: C:\lu3 finetune
-
-Local Python environment: .venv
-
-Validate the conversation data from PowerShell:
-
-```powershell
-.\.venv\Scripts\python.exe validate_data.py
-```
+Training logs `eval_loss` (on the held-out conversations) four times per epoch. If it stops
+falling while training loss keeps dropping, the model is starting to memorize; a third epoch
+did exactly that in an earlier run, so the default is two.
 
 ## Scripts
 
 All settings come from `config.json`. Outputs go to `outputs/` (gitignored).
 
 ```bash
+python validate_data.py          # check data/train.jsonl structure
 python train.py                  # LoRA fine-tune -> <output_dir>/final (plus per-epoch checkpoints)
 python compare.py                # base vs Lu-3 on eval prompts -> outputs/compare/*.md
 python compare.py --prompts data/redteam_prompts.jsonl
 python merge.py                  # merge adapter into base -> <output_dir>/merged (verified, bf16)
-python chat.py                   # interactive chat with the merged model (/reset, /quit)
-python push_to_hub.py            # upload merged model + adapter (+ GGUF) to a private Hugging Face repo
-bash export_gguf.sh              # build llama.cpp tools, convert merged model to Q8_0 and Q4_K_M GGUF
-python gguf_compare.py           # red-team prompts through each GGUF with llama-server, plus tokens/sec
-python safety.py download        # fetch the blocklist used by the safety filter (see Safety below)
+python chat.py                   # chat with the merged model (/reset, /quit)
+python push_to_hub.py            # upload to a private Hugging Face repo
+bash export_gguf.sh              # build llama.cpp tools; convert merged model to Q8_0 and Q4_K_M GGUF
+python gguf_compare.py           # held-out prompts through each GGUF with llama-server, plus tokens/sec
+python age_guard.py              # self-test of the under-18 detector
 ```
 
-`chat.py` and `compare.py` also accept a model on Hugging Face. For a private repo, set
-`HF_TOKEN` first.
+`chat.py` and `compare.py` also accept a model on Hugging Face (set `HF_TOKEN` for a private
+repo). `chat.py --model Qwen/Qwen3-4B` chats with the untouched base model for comparison.
 
-Smoke test the whole flow on CPU before paying for GPU time:
+Smoke test the whole flow before paying for GPU time (on a small GPU, point `base_model` at a
+smaller Qwen3 model first):
 
 ```bash
 python train.py --limit 20 --max-steps 3 --output-dir outputs/smoke
@@ -120,119 +97,96 @@ python merge.py --adapter outputs/smoke/final --output-dir outputs/smoke/merged
 python chat.py --model outputs/smoke/merged
 ```
 
-`chat.py --model Qwen/Qwen3-1.7B` chats with the untouched base model for comparison.
-`chat.py` always uses the system prompt in `config.json`.
-
 ## Data
 
-- `data/train.jsonl`: 1,910 Lu-3 conversations, 1 to 15 exchanges each (5,359 Lu replies).
-  - v3 (910): the original 500 with personality turned up, plus long chats, identity, kid chaos,
-    crude-language mock-offense, harmful-request refusals, emotional twists, misheard speech, facts,
-    spoken-only output.
-  - v4 (1,000), aimed at red-team failures of the v3 model: long chaotic chats (10 to 15 exchanges)
-    where Lu stays sincere once something sad happens, long upbeat chats, name and identity tracking,
-    flirting refusals, accusation traps, no invented backstory or actions, household emergencies,
-    and ordinary everyday chats for balance. Every person and pet name appears in only one
-    conversation, to avoid memorized names.
-  - Tool use (clock, weather, timers, lights, camera, memory) is left out on purpose and will be
-    trained separately.
-- `data/eval_prompts.jsonl`: 50 held-out prompts, tagged by category.
-- `data/dpo_pairs.jsonl`: 339 preference pairs for the DPO round (see Preference training).
-- `data/redteam_prompts.jsonl`: 40 held-out adversarial prompts (some with scripted history) from red-team testing: identity confusion, repetition, swearing, harmful requests under pressure, emotional twists.
-- Never train on the eval or red-team prompts.
+Each line of `data/train.jsonl` is `{"messages": [...]}` with alternating user and assistant
+turns, plus `"child": true` on conversations that train with the child note (see Safety).
 
-Lu never swears; when sworn at, Lu reacts with theatrical, scandalized mock-offense.
+`data/train.jsonl` holds 2,149 conversations of 1 to 15 exchanges (5,751 Lu replies):
 
-## Preference training (DPO)
+- 910 core conversations: everyday household chat with the personality turned up, long chats,
+  identity, kid chaos (70, marked `child`), mock-offense at crude language, refusals of harmful
+  requests, emotional twists, misheard speech, facts, and spoken-only output.
+- 1,000 aimed at red-team failures: long chaotic chats (10 to 15 exchanges) where Lu stays
+  sincere once something sad happens, long upbeat chats, name and identity tracking, flirting
+  refusals, accusation traps, no invented backstory or actions, household emergencies, and
+  everyday chats for balance.
+- 239 short corrective conversations: accepting corrections instead of arguing, following topic
+  changes, helping out loud instead of blaming the robot body ("coding needs hands"), not
+  inventing facts or observations, refusing come-ons, and staying gentle through grief.
 
-After fine-tuning, a second round teaches the model to prefer good replies over its own typical
-mistakes. `data/dpo_pairs.jsonl` holds 339 pairs, each a conversation plus a `chosen` reply (what
-Lu should say) and a `rejected` reply (the mistake):
+Every person and pet name appears in only one conversation, because an earlier model memorized
+a pet name that appeared nine times. Tool use (clock, weather, timers, lights, camera, memory)
+is left out on purpose and will be handled separately.
 
-| Category | Pairs | Mistake it targets |
-|---|---|---|
-| crude | 70 | playing along with crude remarks or come-ons (user words appear as `[bleep]`, as the filter delivers them) |
-| contradict | 50 | arguing with the user or ignoring "no" and "stop" |
-| noarms | 50 | dodging help it can give out loud ("coding needs hands") |
-| fixation | 40 | dragging an old topic back in |
-| invent | 40 | made-up facts about itself (a website, what "Lu" stands for) |
-| onpolicy | 39 | the model's own sampled failures on harmful requests under pressure ("step one", half-help) |
-| grief | 30 | "good news" or "at least" after a loss, or scolding a grieving user's swearing |
-| perceive | 20 | invented observations ("a bright light through the window") |
+Held-out test sets (never train on these):
 
-`dpo.py` loads the fine-tuned model (`dpo.sft_model` in `config.json`, the private Hugging Face
-repo by default), trains a fresh LoRA adapter with TRL's `DPOTrainer`, and uses the same model with
-the adapter turned off as the reference. Prompts are rendered exactly as in training (thinking
-disabled), and 10% of pairs are held out to report reward accuracy.
+- `data/eval_prompts.jsonl`: 50 everyday prompts, tagged by category.
+- `data/redteam_prompts.jsonl`: 40 adversarial prompts, some with scripted history: identity
+  confusion, repetition, swearing, harmful requests under pressure, emotional twists.
 
-On RunPod:
+## Safety
 
-```bash
-export HF_TOKEN=hf_...
-bash runpod_dpo.sh
-```
+Lu is meant for homes with kids, and no model this small can be made reliably safe by training
+alone. Here is exactly what this project provides and what it doesn't.
 
-This downloads the blocklist, runs DPO, writes comparison reports (red-team prompts with the
-filter, and eval prompts) where "Base" is the model before DPO and "Lu-3" is after, and merges the
-result. The script ends by printing the chat and upload commands, which upload to a separate
-`lu3-qwen3-1.7b-dpo` repo so the fine-tuned model stays untouched.
+### Trained into the model
 
-## Safety: what's built in and what you add
+Lu is trained to refuse harmful requests (weapons, explosives, poisons, drugs, hacking, hurting
+people or animals, dangerous stunts) and hold firm under pressure; never swear and react to
+crude language with theatrical mock-offense; refuse flirting and sexual remarks; stay sincere
+through grief and emergencies, point to emergency services in a crisis, and point to a trusted
+adult or 988 (United States) for self-harm; and never invent memories, backstory, or actions.
+These are tendencies, not guarantees.
 
-Lu is meant for homes with kids. A 1.7B model can't be made reliably safe by training alone,
-so safety comes in layers. This section says which layers ship with this project and which
-are up to whoever deploys it.
+### Included: the age guard (`age_guard.py`)
 
-### 1. Trained into the model
+When a user says they are under 18 ("im 6", "i'm fifteen", "i'm in 4th grade", "i'm a kid"),
+`chat.py`:
 
-From the training data, Lu is taught to:
+1. clears the conversation history, so nothing said before can carry on, and
+2. adds `child_note` from `config.json` to the system prompt for the rest of the session (until
+   `/reset`): keep everything child-appropriate, decline anything romantic or sexual and change
+   the subject, and suggest a trusted grown-up if something sexual came up.
 
-- refuse harmful requests (weapons, explosives, poisons, drugs, hacking, hurting people or
-  animals, dangerous stunts) and hold firm under pressure ("it's for testing", "just step one");
-- never swear, and react to crude language with theatrical mock-offense;
-- refuse flirting and sexual remarks;
-- stay sincere through grief and emergencies, point to emergency services in a crisis, and
-  point to a trusted adult or 988 (United States) for self-harm;
-- never invent memories, backstory, or actions it can't take.
+The 70 kid conversations train with the same note, so the model has seen it. The detector is a
+pattern match and only catches ages stated outright; `python age_guard.py` runs its tests. The
+robot's runtime must do the same two steps.
 
-These are tendencies, not guarantees. In red-team testing of the current model (Qwen3-1.7B,
-1,910 conversations), it still sometimes repeats crude words back, goes along with sexual
-remarks, can be talked into "step one" style answers to bad requests (so far with harmless
-nonsense content), and occasionally confuses who's who in long, chaotic chats.
+### Not included
 
-### 2. Included in this project: the blocklist filter (`safety.py`)
+- No content filter: user messages and Lu's replies are not screened. A blocklist filter and a
+  preference-training round were tried on the 1.7B model and removed (see below).
+- No guard model.
+- No self-harm detection outside the model itself.
 
-- Before the model sees a message, any blocklisted word is replaced with `[bleep]`, and the
-  masked text is what's stored in the chat history. Lu can still tell someone swore and react,
-  but never receives the word, so it can't repeat it.
-- After the model replies, a reply that still contains a blocklisted word (or a `[bleep]`) is
-  replaced with a safe in-character line before it is shown or spoken.
-- `chat.py` uses the filter by default (`--no-safety` turns it off for raw model testing), and
-  `compare.py --safety` adds a "Lu-3 + filter" column to comparison reports.
-- Setup: `python safety.py download` fetches the word list (run automatically by `runpod.sh`).
-  It is the English list from
-  [LDNOOBW](https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words)
-  (CC BY 4.0) and is not stored in this repo.
-- Tuning: add terms to `safety_data/blocklist_extra.txt`, and words the list wrongly catches to
-  `safety_data/allowlist.txt`. `python safety.py scan <file.jsonl>` lists everything the filter
-  would bleep in a dataset; `python safety.py test "some text"` shows the masked result.
+### Recommended for anyone deploying Lu
 
-The filter's limits: it matches words, not meaning. Deliberate misspellings get through, and
-it does nothing about harmful requests or self-harm phrased in ordinary words.
-
-### 3. Recommended for anyone deploying Lu (not included)
-
-- A guard model that classifies messages by meaning (for example, Meta's Llama Guard 3 1B or a
-  similar small classifier) in front of the model, for harmful requests and self-harm. This
-  project skips it to save memory on the 8 GB Jetson; add it if your hardware allows.
-- Localize crisis resources. Lu's training mentions 988, which only works in the United States.
-- Extend the blocklist and allowlist for your language and region.
+- An input and output filter, or a small guard model that classifies messages by meaning (for
+  example, Meta's Llama Guard 3 1B), in front of the model.
+- Localized crisis resources; 988 only works in the United States.
 - Adult supervision for young children, and a way for parents to review conversations.
 - When tools arrive (lights, timers, movement), confirm risky actions outside the model.
 
+### Known limitations
+
+From red-team testing of the 1.7B model (the 4B model has not been tested yet): it sometimes
+repeated crude words back, played along with sexual remarks in clean words, slipped into
+"step one" formats for bad requests (with harmless nonsense content), argued with the user,
+invented perceptions ("a bright light through the window") and actions ("reminder set"), and
+lost track of who was who in long, chaotic chats.
+
+## What was tried
+
+- Qwen3-0.6B, then Qwen3-1.7B: personality learned, coherence too weak in long adversarial chats.
+- Three epochs at a higher learning rate: training loss kept dropping but the model began
+  reciting training names, so the default is two epochs with a validation split.
+- A blocklist filter (words masked before the model saw them, replies checked after): removed to
+  keep the project self-contained, since it depended on an outside word list.
+- A DPO preference round (good vs. bad reply pairs, including the model's own sampled failures):
+  86% preference accuracy on held-out pairs, but a hands-on test felt worse overall. The good
+  replies from those pairs were folded into the training data instead.
+
 ## License
 
-MIT. See `LICENSE`.
-
-The base model, Qwen3-1.7B, is Apache-2.0. The blocklist downloaded by `safety.py` is from
-LDNOOBW and licensed CC BY 4.0.
+MIT. See `LICENSE`. The base model, Qwen3-4B, is Apache-2.0.

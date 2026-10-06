@@ -21,5 +21,3 @@ Thumbs.db
 # llama.cpp checkout and build (export_gguf.sh)
 llama.cpp/
 
-# Downloaded blocklist (python safety.py download)
-safety_data/blocklist_en.txt

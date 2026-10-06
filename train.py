@@ -28,6 +28,14 @@ tokenizer = AutoTokenizer.from_pretrained(config["base_model"])
 system_message = {"role": "system", "content": config["system_prompt"]}
 
 
+def system_for(conversation):
+    # Conversations marked "child" train with the same child note chat.py adds
+    # once a user says they're under 18 (see age_guard.py).
+    if conversation.get("child"):
+        return {"role": "system", "content": config["system_prompt"] + " " + config["child_note"]}
+    return system_message
+
+
 def build_examples(conversation):
     """One training example per assistant turn.
 
@@ -36,7 +44,7 @@ def build_examples(conversation):
     Rendering the whole conversation at once would not match inference,
     because Qwen3's template drops the empty think block from earlier turns.
     """
-    messages = [system_message] + conversation["messages"]
+    messages = [system_for(conversation)] + conversation["messages"]
     examples = []
 
     for index, message in enumerate(messages):

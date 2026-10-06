@@ -7,8 +7,6 @@ import torch
 from peft import PeftConfig, PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from safety import SafetyFilter
-
 project_dir = Path(__file__).resolve().parent
 
 with (project_dir / "config.json").open(encoding="utf-8") as file:
@@ -19,10 +17,8 @@ parser.add_argument("--adapter", default=str(project_dir / config["output_dir"] 
 parser.add_argument("--prompts", default=str(project_dir / "data" / "eval_prompts.jsonl"))
 parser.add_argument("--limit", type=int, default=None, help="Use only the first N prompts.")
 parser.add_argument("--greedy", action="store_true", help="Disable sampling.")
-parser.add_argument("--safety", action="store_true", help="Also show Lu-3 behind the blocklist filter (safety.py).")
 args = parser.parse_args()
 
-safety = SafetyFilter.load() if args.safety else None
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 use_bf16 = device == "cuda" and torch.cuda.is_bf16_supported()
@@ -69,12 +65,7 @@ for number, prompt in enumerate(prompts, start=1):
     with model.disable_adapter():
         base_reply = generate(prompt["messages"])
     lu_reply = generate(prompt["messages"])
-    result = {**prompt, "base": base_reply, "lu3": lu_reply}
-    if safety:
-        masked = [{**m, "content": safety.mask(m["content"])[0]} if m["role"] == "user" else m for m in prompt["messages"]]
-        filtered = generate(masked)
-        result["lu3_filtered"] = filtered if safety.is_clean(filtered) else f"(replaced) {safety.safe_reply()}"
-    results.append(result)
+    results.append({**prompt, "base": base_reply, "lu3": lu_reply})
     print(f"[{number}/{len(prompts)}] {prompt['category']}: {prompt['messages'][-1]['content']}")
 
 stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -93,8 +84,6 @@ for number, result in enumerate(results, start=1):
         speaker = "User" if message["role"] == "user" else "Lu (history)"
         lines.append(f"**{speaker}:** {message['content']}  ")
     lines += ["", f"**Base:** {result['base']}", "", f"**Lu-3:** {result['lu3']}", ""]
-    if "lu3_filtered" in result:
-        lines += [f"**Lu-3 + filter:** {result['lu3_filtered']}", ""]
 
 report_path = report_dir / f"compare-{stamp}.md"
 report_path.write_text("\n".join(lines), encoding="utf-8")

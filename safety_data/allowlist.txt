@@ -1,9 +1,0 @@
-# Words the blocklist wrongly catches. One per line, lowercase.
-cumin
-domination
-spicy
-spices
-escort
-escorts
-escorted
-sucks
