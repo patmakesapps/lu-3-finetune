@@ -1,5 +1,6 @@
 import argparse
 import json
+import math
 import random
 from pathlib import Path
 
@@ -66,7 +67,14 @@ with Path(args.data).open(encoding="utf-8") as file:
 if args.limit:
     conversations = conversations[: args.limit]
 
-examples = [example for conversation in conversations for example in build_examples(conversation)]
+# Hold out whole conversations so validation loss shows memorization:
+# it stops falling (or rises) while training loss keeps dropping.
+held_out = int(len(conversations) * config["validation_fraction"])
+shuffled = random.sample(conversations, len(conversations))
+validation_conversations, training_conversations = shuffled[:held_out], shuffled[held_out:]
+
+examples = [example for conversation in training_conversations for example in build_examples(conversation)]
+validation_examples = [example for conversation in validation_conversations for example in build_examples(conversation)]
 random.shuffle(examples)
 
 # The prompt for a final turn must match what the chat template produces for
@@ -111,12 +119,14 @@ model = get_peft_model(model, LoraConfig(
 ))
 
 reply_tokens = sum(sum(label != -100 for label in example["labels"]) for example in examples)
-print(f"Conversations: {len(conversations)}")
-print(f"Training examples (assistant turns): {len(examples)}")
+print(f"Conversations: {len(training_conversations)} training, {len(validation_conversations)} validation")
+print(f"Training examples (assistant turns): {len(examples)}, validation examples: {len(validation_examples)}")
 print(f"Longest example: {max(len(example['input_ids']) for example in examples)} tokens")
 print(f"Scored reply tokens: {reply_tokens}")
 print(f"Device: {'cuda' if torch.cuda.is_available() else 'cpu'}, bf16: {use_bf16}")
 model.print_trainable_parameters()
+
+steps_per_epoch = math.ceil(len(examples) / (config["batch_size"] * config["gradient_accumulation_steps"]))
 
 trainer = Trainer(
     model=model,
@@ -130,6 +140,9 @@ trainer = Trainer(
         warmup_ratio=config["warmup_ratio"],
         lr_scheduler_type="cosine",
         logging_steps=5,
+        eval_strategy="steps" if validation_examples else "no",
+        eval_steps=max(1, steps_per_epoch // 4),
+        per_device_eval_batch_size=config["batch_size"],
         save_strategy="epoch",
         bf16=use_bf16,
         seed=config["seed"],
@@ -137,6 +150,7 @@ trainer = Trainer(
         remove_unused_columns=False,
     ),
     train_dataset=examples,
+    eval_dataset=validation_examples or None,
     data_collator=collate,
 )
 trainer.train()

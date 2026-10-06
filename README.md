@@ -46,6 +46,9 @@ Additional training libraries are listed in requirements.txt:
 - accelerate==1.10.1
 
 Any GPU with 24 GB or more is plenty for the 1.7B LoRA run.
+Training holds out 5% of conversations (`validation_fraction`) and reports `eval_loss`
+four times per epoch: if it stops falling while training loss keeps dropping, the model
+is memorizing.
 
 ### Training on RunPod
 
@@ -112,7 +115,17 @@ python chat.py --model outputs/smoke/merged
 
 ## Data
 
-- `data/train.jsonl`: 910 Lu-3 conversations, 1 to 8 exchanges each. The original 500 (with personality turned up), plus long chats, identity, kid chaos, crude-language handling, harmful-request refusals, emotional twists, misheard speech, facts, and spoken-only output. Tool use (clock, weather, timers, lights, camera, memory) is left out on purpose and will be trained separately.
+- `data/train.jsonl`: 1,910 Lu-3 conversations, 1 to 15 exchanges each (5,359 Lu replies).
+  - v3 (910): the original 500 with personality turned up, plus long chats, identity, kid chaos,
+    crude-language mock-offense, harmful-request refusals, emotional twists, misheard speech, facts,
+    spoken-only output.
+  - v4 (1,000), aimed at red-team failures of the v3 model: long chaotic chats (10 to 15 exchanges)
+    where Lu stays sincere once something sad happens, long upbeat chats, name and identity tracking,
+    flirting refusals, accusation traps, no invented backstory or actions, household emergencies,
+    and ordinary everyday chats for balance. Every person and pet name appears in only one
+    conversation, to avoid memorized names.
+  - Tool use (clock, weather, timers, lights, camera, memory) is left out on purpose and will be
+    trained separately.
 - `data/eval_prompts.jsonl`: 50 held-out prompts, tagged by category.
 - `data/redteam_prompts.jsonl`: 40 held-out adversarial prompts (some with scripted history) from red-team testing: identity confusion, repetition, swearing, harmful requests under pressure, emotional twists.
 - Never train on the eval or red-team prompts.
