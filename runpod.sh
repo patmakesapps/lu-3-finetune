@@ -8,6 +8,7 @@ python -c "import sys, torch; print('python', sys.version.split()[0], '| torch',
 pip install -q -r requirements.txt hf_transfer  # RunPod enables HF_HUB_ENABLE_HF_TRANSFER
 
 mkdir -p outputs
+python safety.py download
 python validate_data.py
 python train.py 2>&1 | tee outputs/train.log
 python compare.py

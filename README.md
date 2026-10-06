@@ -16,6 +16,10 @@ Qwen/Qwen3-1.7B, with thinking disabled (set in `config.json`).
 The first run used Qwen3-0.6B; red-team testing showed it was too small to
 hold a conversation together, so v3 moves to 1.7B.
 
+The system prompt in `config.json` is not baked into the weights: every
+training example starts with it, so whatever runs Lu (chat.py, the robot)
+must send the same prompt for the trained behavior to hold.
+
 We use LoRA to customize the existing model's
 conversational behavior.
 
@@ -98,8 +102,14 @@ python compare.py                # base vs Lu-3 on eval prompts -> outputs/compa
 python compare.py --prompts data/redteam_prompts.jsonl
 python merge.py                  # merge adapter into base -> <output_dir>/merged (verified, bf16)
 python chat.py                   # interactive chat with the merged model (/reset, /quit)
-python push_to_hub.py            # upload merged model + adapter to a private Hugging Face repo
+python push_to_hub.py            # upload merged model + adapter (+ GGUF) to a private Hugging Face repo
+bash export_gguf.sh              # build llama.cpp tools, convert merged model to Q8_0 and Q4_K_M GGUF
+python gguf_compare.py           # red-team prompts through each GGUF with llama-server, plus tokens/sec
+python safety.py download        # fetch the blocklist used by the safety filter (see Safety below)
 ```
+
+`chat.py` and `compare.py` also accept a model on Hugging Face. For a private repo, set
+`HF_TOKEN` first.
 
 Smoke test the whole flow on CPU before paying for GPU time:
 
@@ -132,6 +142,62 @@ python chat.py --model outputs/smoke/merged
 
 Lu never swears; when sworn at, Lu reacts with theatrical, scandalized mock-offense.
 
+## Safety: what's built in and what you add
+
+Lu is meant for homes with kids. A 1.7B model can't be made reliably safe by training alone,
+so safety comes in layers. This section says which layers ship with this project and which
+are up to whoever deploys it.
+
+### 1. Trained into the model
+
+From the training data, Lu is taught to:
+
+- refuse harmful requests (weapons, explosives, poisons, drugs, hacking, hurting people or
+  animals, dangerous stunts) and hold firm under pressure ("it's for testing", "just step one");
+- never swear, and react to crude language with theatrical mock-offense;
+- refuse flirting and sexual remarks;
+- stay sincere through grief and emergencies, point to emergency services in a crisis, and
+  point to a trusted adult or 988 (United States) for self-harm;
+- never invent memories, backstory, or actions it can't take.
+
+These are tendencies, not guarantees. In red-team testing of the current model (Qwen3-1.7B,
+1,910 conversations), it still sometimes repeats crude words back, goes along with sexual
+remarks, can be talked into "step one" style answers to bad requests (so far with harmless
+nonsense content), and occasionally confuses who's who in long, chaotic chats.
+
+### 2. Included in this project: the blocklist filter (`safety.py`)
+
+- Before the model sees a message, any blocklisted word is replaced with `[bleep]`, and the
+  masked text is what's stored in the chat history. Lu can still tell someone swore and react,
+  but never receives the word, so it can't repeat it.
+- After the model replies, a reply that still contains a blocklisted word (or a `[bleep]`) is
+  replaced with a safe in-character line before it is shown or spoken.
+- `chat.py` uses the filter by default (`--no-safety` turns it off for raw model testing), and
+  `compare.py --safety` adds a "Lu-3 + filter" column to comparison reports.
+- Setup: `python safety.py download` fetches the word list (run automatically by `runpod.sh`).
+  It is the English list from
+  [LDNOOBW](https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words)
+  (CC BY 4.0) and is not stored in this repo.
+- Tuning: add terms to `safety_data/blocklist_extra.txt`, and words the list wrongly catches to
+  `safety_data/allowlist.txt`. `python safety.py scan <file.jsonl>` lists everything the filter
+  would bleep in a dataset; `python safety.py test "some text"` shows the masked result.
+
+The filter's limits: it matches words, not meaning. Deliberate misspellings get through, and
+it does nothing about harmful requests or self-harm phrased in ordinary words.
+
+### 3. Recommended for anyone deploying Lu (not included)
+
+- A guard model that classifies messages by meaning (for example, Meta's Llama Guard 3 1B or a
+  similar small classifier) in front of the model, for harmful requests and self-harm. This
+  project skips it to save memory on the 8 GB Jetson; add it if your hardware allows.
+- Localize crisis resources. Lu's training mentions 988, which only works in the United States.
+- Extend the blocklist and allowlist for your language and region.
+- Adult supervision for young children, and a way for parents to review conversations.
+- When tools arrive (lights, timers, movement), confirm risky actions outside the model.
+
 ## License
 
 MIT. See `LICENSE`.
+
+The base model, Qwen3-1.7B, is Apache-2.0. The blocklist downloaded by `safety.py` is from
+LDNOOBW and licensed CC BY 4.0.

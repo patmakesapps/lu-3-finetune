@@ -59,6 +59,13 @@ and GGUF files for llama.cpp (Q8_0, Q4_K_M) are in `gguf/` when exported.
 
 Tool use (time, weather, timers, lights, camera, memory) is not trained yet.
 
+## Safety
+
+Lu is trained to refuse harmful requests, never swear, and turn down flirting, but a 1.7B model
+does not do this reliably under adversarial use: it can repeat crude words back and sometimes
+plays along. Run it behind the blocklist filter (`safety.py`) from the source repo, and see that
+repo's README for what is built in and what deployers should add (such as a guard model).
+
 ## Use
 
 Always pass this system prompt and disable thinking:

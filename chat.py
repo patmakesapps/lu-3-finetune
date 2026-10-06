@@ -6,6 +6,8 @@ from pathlib import Path
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, TextStreamer
 
+from safety import SafetyFilter
+
 project_dir = Path(__file__).resolve().parent
 
 with (project_dir / "config.json").open(encoding="utf-8") as file:
@@ -16,7 +18,11 @@ parser.add_argument("--model", default=str(project_dir / config["output_dir"] / 
                     help="Merged model folder, or a Hugging Face model id such as Qwen/Qwen3-0.6B.")
 parser.add_argument("--history", type=int, default=config["chat_history_exchanges"], help="Exchanges of history to keep.")
 parser.add_argument("--greedy", action="store_true", help="Disable sampling.")
+parser.add_argument("--no-safety", action="store_true", help="Turn off the blocklist filter (raw model testing).")
 args = parser.parse_args()
+
+# With the filter on, replies are checked before they're shown, so they can't stream.
+safety = None if args.no_safety else SafetyFilter.load()
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 use_bf16 = device == "cuda" and torch.cuda.is_bf16_supported()
@@ -31,7 +37,7 @@ settings = {
     "max_new_tokens": config["max_new_tokens"],
     "repetition_penalty": config["repetition_penalty"],
     "pad_token_id": tokenizer.pad_token_id,
-    "streamer": streamer,
+    "streamer": streamer if safety is None else None,
 }
 if args.greedy:
     settings.update(do_sample=False, temperature=None, top_p=None, top_k=None)
@@ -58,6 +64,13 @@ while True:
         print("(history cleared)")
         continue
 
+    notes = []
+    if safety:
+        # The model and the history only ever see the masked text.
+        user_text, bleeped = safety.mask(user_text)
+        if bleeped:
+            notes.append(f"input: {bleeped} bleeped")
+
     history.append({"role": "user", "content": user_text})
     history = history[-(args.history * 2 - 1):]
 
@@ -77,5 +90,11 @@ while True:
 
     new_tokens = output[0][inputs["input_ids"].shape[1]:]
     reply = tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+    if safety:
+        if not safety.is_clean(reply):
+            reply = safety.safe_reply()
+            notes.append("reply replaced")
+        print(reply)
     history.append({"role": "assistant", "content": reply})
-    print(f"({len(new_tokens)} tokens, {len(new_tokens) / elapsed:.1f} tok/s)")
+    safety_note = f", safety: {'; '.join(notes)}" if notes else ""
+    print(f"({len(new_tokens)} tokens, {len(new_tokens) / elapsed:.1f} tok/s{safety_note})")
