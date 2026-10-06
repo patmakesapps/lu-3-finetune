@@ -17,3 +17,6 @@ outputs/
 Thumbs.db
 .vscode/
 .idea/
+
+# llama.cpp checkout and build (export_gguf.sh)
+llama.cpp/

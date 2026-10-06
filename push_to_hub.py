@@ -54,7 +54,8 @@ tags:
 
 Lu-3, usually called Lu, is a household robot companion from Lumalien: theatrical, cheeky, loyal,
 and short-spoken, built for voice conversation. This is {config["base_model"]} with a LoRA adapter
-merged in, trained on {conversation_count} original conversations. The unmerged adapter is in `adapter/`.
+merged in, trained on {conversation_count} original conversations. The unmerged adapter is in `adapter/`,
+and GGUF files for llama.cpp (Q8_0, Q4_K_M) are in `gguf/` when exported.
 
 Tool use (time, weather, timers, lights, camera, memory) is not trained yet.
 
@@ -92,6 +93,13 @@ if adapter_dir.exists():
     print(f"Uploading adapter from {adapter_dir} ...")
     api.upload_folder(repo_id=repo_id, folder_path=str(adapter_dir), path_in_repo="adapter",
                       commit_message="Upload LoRA adapter")
+
+gguf_dir = output_dir / "gguf"
+if list(gguf_dir.glob("*.gguf")):
+    print(f"Uploading GGUF files from {gguf_dir} ...")
+    api.upload_folder(repo_id=repo_id, folder_path=str(gguf_dir), path_in_repo="gguf",
+                      allow_patterns=["*.gguf"], ignore_patterns=["*bf16*"],
+                      commit_message="Upload GGUF files for llama.cpp")
 
 compare_dir = project_dir / "outputs" / "compare"
 if compare_dir.exists():
