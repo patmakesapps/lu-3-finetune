@@ -5,7 +5,7 @@
 set -euo pipefail
 
 python -c "import sys, torch; print('python', sys.version.split()[0], '| torch', torch.__version__, '| cuda', torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else '')"
-pip install -q -r requirements.txt
+pip install -q -r requirements.txt hf_transfer  # RunPod enables HF_HUB_ENABLE_HF_TRANSFER
 
 mkdir -p outputs
 python validate_data.py
