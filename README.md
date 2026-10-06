@@ -16,6 +16,10 @@ repo `patkearney/lu3-qwen3-4b` (merged weights, LoRA adapter, Q8_0 and Q4_K_M GG
 llama.cpp, and comparison reports). The earlier 1.7B model stays in `patkearney/lu3-qwen3-1.7b`
 for comparison.
 
+Q4_K_M (2.4 GB) is the intended Jetson build: in a hands-on chat through llama-server
+(`chat_gguf.py`) its personality and refusals held up like the full model's. Jetson speed is
+still to be measured.
+
 - Qwen3-4B is a hybrid model: thinking (reasoning before answering) can be turned on per
   request. Lu is trained and run with thinking off, because reasoning adds seconds of silence
   before each spoken reply. If thinking is wanted later (for example, planning tool use), the
