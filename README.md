@@ -61,6 +61,28 @@ Validate the conversation data from PowerShell:
 .\.venv\Scripts\python.exe validate_data.py
 ```
 
+## Scripts
+
+All settings come from `config.json`. Outputs go to `outputs/` (gitignored).
+
+```bash
+python train.py                  # LoRA fine-tune -> outputs/lu3/final (plus per-epoch checkpoints)
+python compare.py                # base vs Lu-3 on eval prompts -> outputs/compare/*.md
+python merge.py                  # merge adapter into base -> outputs/lu3/merged (verified, bf16)
+python chat.py                   # interactive chat with the merged model (/reset, /quit)
+```
+
+Smoke test the whole flow on CPU before paying for GPU time:
+
+```bash
+python train.py --limit 20 --max-steps 3 --output-dir outputs/smoke
+python compare.py --adapter outputs/smoke/final --limit 2
+python merge.py --adapter outputs/smoke/final --output-dir outputs/smoke/merged
+python chat.py --model outputs/smoke/merged
+```
+
+`chat.py --model Qwen/Qwen3-0.6B` chats with the untouched base model for comparison.
+
 ## Data
 
 - `data/train.jsonl`: 500 Lu-3 conversations (350 single-turn, 150 multi-turn) for personality and conversation style. Tool use (clock, weather, timers, lights, camera, memory) is left out on purpose and will be trained separately.
