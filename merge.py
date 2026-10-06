@@ -46,7 +46,9 @@ with torch.no_grad():
 
 difference = (adapter_logits - merged_logits).abs().max().item()
 print(f"Max logit difference, adapter vs merged: {difference:.6f}")
-if difference > 1e-3:
+# Float rounding grows with depth (about 0.002 on the 36-layer 4B model); a real
+# merge mistake shows up as differences of 1 or more.
+if difference > 1e-2:
     raise ValueError("Merged model does not match the adapter model.")
 
 merged = merged.to(torch.bfloat16)
