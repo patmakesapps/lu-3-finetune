@@ -89,6 +89,7 @@ python chat.py                   # chat with the merged model (/reset, /quit)
 python push_to_hub.py            # upload to a private Hugging Face repo
 bash export_gguf.sh              # build llama.cpp tools; convert merged model to Q8_0 and Q4_K_M GGUF
 python gguf_compare.py           # held-out prompts through each GGUF with llama-server, plus tokens/sec
+python chat_gguf.py              # chat with the Q4_K_M GGUF through llama-server, like the Jetson (--gguf for Q8_0)
 python age_guard.py              # self-test of the under-18 detector
 ```
 
