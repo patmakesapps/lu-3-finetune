@@ -1,0 +1,19 @@
+# Secrets
+hugging_face_token.txt
+.env
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Training outputs and model artifacts
+outputs/
+*.safetensors
+*.gguf
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
