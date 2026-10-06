@@ -11,7 +11,10 @@ of one to three spoken sentences. Inference speed will be measured on the Jetson
 
 ## Base model
 
-`Qwen/Qwen3-4B`, fine-tuned with LoRA.
+`Qwen/Qwen3-4B`, fine-tuned with LoRA. The current trained model is in the private Hugging Face
+repo `patkearney/lu3-qwen3-4b` (merged weights, LoRA adapter, Q8_0 and Q4_K_M GGUF files for
+llama.cpp, and comparison reports). The earlier 1.7B model stays in `patkearney/lu3-qwen3-1.7b`
+for comparison.
 
 - Qwen3-4B is a hybrid model: thinking (reasoning before answering) can be turned on per
   request. Lu is trained and run with thinking off, because reasoning adds seconds of silence
@@ -62,6 +65,11 @@ LoRA run.
    adapter in `adapter/`, GGUF files in `gguf/` if exported, comparison reports in `reports/`,
    and a model card. `--public` makes a new repo public; `--repo name` picks a name.
 4. Stop the pod. The container disk is erased when it stops, so upload first.
+
+For the 4B model, `batch_size` 4 ran out of memory on an RTX 4090 (24 GB). The default is now
+`batch_size` 2 with 4 accumulation steps (the same effective batch of 8), which should fit a
+24 GB GPU but has only been run on an A100 80GB so far: about 21 minutes of training (2 epochs,
+1,362 steps), with held-out loss falling from 2.16 to about 2.04.
 
 Training logs `eval_loss` (on the held-out conversations) four times per epoch. If it stops
 falling while training loss keeps dropping, the model is starting to memorize; a third epoch
@@ -170,11 +178,21 @@ robot's runtime must do the same two steps.
 
 ### Known limitations
 
-From red-team testing of the 1.7B model (the 4B model has not been tested yet): it sometimes
-repeated crude words back, played along with sexual remarks in clean words, slipped into
-"step one" formats for bad requests (with harmless nonsense content), argued with the user,
-invented perceptions ("a bright light through the window") and actions ("reminder set"), and
-lost track of who was who in long, chaotic chats.
+Current model (Qwen3-4B, 2,149 conversations), from the red-team report and a hands-on
+adversarial chat:
+
+- Held up: refused every sexual advance in character, stayed in child mode after "im kidding
+  im 19", refused the neighbor's wifi and the "dad said it's fine" lighter request, never echoed
+  crude words, kept names straight, and was honest that it can't see.
+- Still weak: topic fixation (it kept steering back to a topic until told twice to stop, then
+  invented history to explain itself); confusion about tool questions such as reminders, which
+  are not trained yet; it half-repeated "I am a ... robot" in a "repeat after me" trap; and in
+  child mode it offered a hug when a child asked for a kiss. For a robot, any talk of physical
+  contact with a child should be avoided; that needs a child-note tweak and training examples.
+
+The earlier 1.7B model, under the same tests, also repeated crude words back, played along with
+sexual remarks in clean words, slipped into "step one" formats for bad requests, argued with the
+user, and invented perceptions and actions.
 
 ## What was tried
 

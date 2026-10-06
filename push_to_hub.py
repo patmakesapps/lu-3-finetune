@@ -63,9 +63,24 @@ Tool use (time, weather, timers, lights, camera, memory) is not trained yet.
 
 Lu is trained to refuse harmful requests, never swear, and turn down flirting, but a small model
 does not do this reliably under adversarial use: it can repeat crude words back and sometimes
-plays along. No content filter ships with it. Use the age guard from the source repo (a hard stop
-when a user says they are under 18), and see that repo's README for what deployers should add,
-such as an input and output filter or a guard model.
+plays along. No content filter ships with it. See the source repo's README for known limitations
+and what deployers should add, such as an input and output filter or a guard model.
+
+Age guard: whenever a user says they are under 18 (`age_guard.py` in the source repo detects
+this), clear the conversation history and append this child note to the system prompt for the
+rest of the session. Kid conversations were trained with exactly this text:
+
+```
+{config["child_note"]}
+```
+
+## Running the GGUF with llama.cpp
+
+`gguf/lu3-q4_k_m.gguf` is the intended size for a Jetson Orin Nano 8GB (`gguf/lu3-q8_0.gguf` is
+higher quality but larger). Render the prompt with this repo's tokenizer chat template
+(system prompt, history, `add_generation_prompt=True`, `enable_thinking=False`) and send the
+text to llama-server's `/completion` endpoint with `"stop": ["<|im_end|>"]` and the sampling
+settings below; `gguf_compare.py` in the source repo does exactly this.
 
 ## Use
 
