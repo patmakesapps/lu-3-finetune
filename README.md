@@ -59,3 +59,13 @@ Validate the conversation data from PowerShell:
 
 ```powershell
 .\.venv\Scripts\python.exe validate_data.py
+```
+
+## Data
+
+- `data/train.jsonl`: 500 Lu-3 conversations (350 single-turn, 150 multi-turn) for personality and conversation style. Tool use (clock, weather, timers, lights, camera, memory) is left out on purpose and will be trained separately.
+- `data/eval_prompts.jsonl`: 50 held-out prompts, tagged by category, for comparing the base and fine-tuned models. Never train on these.
+
+## License
+
+MIT. See `LICENSE`.
