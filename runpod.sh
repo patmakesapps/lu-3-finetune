@@ -9,7 +9,7 @@ pip install -q -r requirements.txt hf_transfer  # RunPod enables HF_HUB_ENABLE_H
 
 mkdir -p outputs
 python validate_data.py
-python train.py 2>&1 | tee outputs/train.log
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True python train.py 2>&1 | tee outputs/train.log
 python compare.py
 python compare.py --prompts data/redteam_prompts.jsonl
 python merge.py
