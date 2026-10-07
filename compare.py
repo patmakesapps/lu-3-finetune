@@ -12,6 +12,12 @@ project_dir = Path(__file__).resolve().parent
 with (project_dir / "config.json").open(encoding="utf-8") as file:
     config = json.load(file)
 
+# The runtime sends its tools on every turn, so evals do too. A reply that is
+# a tool call shows up as <tool_call> text; nothing is executed here.
+with (project_dir / "data" / "tools.json").open(encoding="utf-8") as file:
+    tool_library = json.load(file)
+tools = [tool_library[name] for name in config["tools"]]
+
 parser = argparse.ArgumentParser(description="Compare base Qwen3 and the Lu-3 adapter on held-out prompts.")
 parser.add_argument("--adapter", default=str(project_dir / config["output_dir"] / "final"))
 parser.add_argument("--prompts", default=str(project_dir / "data" / "eval_prompts.jsonl"))
@@ -38,6 +44,7 @@ if args.limit:
 def generate(messages):
     text = tokenizer.apply_chat_template(
         [{"role": "system", "content": config["system_prompt"]}] + messages,
+        tools=tools,
         tokenize=False,
         add_generation_prompt=True,
         enable_thinking=False,

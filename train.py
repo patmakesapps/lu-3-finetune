@@ -27,6 +27,12 @@ torch.manual_seed(config["seed"])
 tokenizer = AutoTokenizer.from_pretrained(config["base_model"])
 system_message = {"role": "system", "content": config["system_prompt"]}
 
+# Tool definitions by name. get_time and get_machine_info must stay identical
+# to TOOL_DEFINITIONS in the Lu-3 runtime (software/lu3/tools.py): the template
+# writes them into every system prompt, and the runtime sends them every turn.
+with (project_dir / "data" / "tools.json").open(encoding="utf-8") as file:
+    tool_library = json.load(file)
+
 
 def system_for(conversation):
     # Conversations marked "child" train with the same child note chat.py adds
@@ -36,15 +42,26 @@ def system_for(conversation):
     return system_message
 
 
+def tools_for(conversation):
+    # Most conversations use the runtime's tools. Some list extra tools so Lu
+    # learns to read the definitions instead of memorizing two names.
+    return [tool_library[name] for name in conversation.get("tools", config["tools"])]
+
+
 def build_examples(conversation):
-    """One training example per assistant turn.
+    """One training example per assistant turn, including tool-call turns.
 
     The prompt is rendered exactly as at inference time (history, then the
     generation prompt with thinking disabled), and only the reply is scored.
     Rendering the whole conversation at once would not match inference,
     because Qwen3's template drops the empty think block from earlier turns.
+
+    The reply is cut from the template's own rendering of the conversation up
+    to that turn, so tool calls are scored exactly as the template writes them
+    (<tool_call> JSON </tool_call>). Tool results are prompt only, never scored.
     """
     messages = [system_for(conversation)] + conversation["messages"]
+    tools = tools_for(conversation)
     examples = []
 
     for index, message in enumerate(messages):
@@ -52,10 +69,21 @@ def build_examples(conversation):
             continue
 
         prompt_text = tokenizer.apply_chat_template(
-            messages[:index], tokenize=False, add_generation_prompt=True, enable_thinking=False
+            messages[:index], tools=tools, tokenize=False, add_generation_prompt=True, enable_thinking=False
         )
+        full_text = tokenizer.apply_chat_template(
+            messages[: index + 1], tools=tools, tokenize=False, enable_thinking=False
+        )
+        # The template must extend the generation prompt with this turn, or
+        # training and inference formats have drifted apart.
+        if not full_text.startswith(prompt_text) or not full_text.endswith("<|im_end|>\n"):
+            raise ValueError("Training format does not match the Qwen3 chat template.")
+        reply_text = full_text[len(prompt_text):-1]
+        if not message.get("tool_calls") and reply_text != message["content"] + "<|im_end|>":
+            raise ValueError("Spoken reply does not render as content + <|im_end|>.")
+
         prompt_ids = tokenizer(prompt_text, add_special_tokens=False)["input_ids"]
-        reply_ids = tokenizer(message["content"] + "<|im_end|>", add_special_tokens=False)["input_ids"]
+        reply_ids = tokenizer(reply_text, add_special_tokens=False)["input_ids"]
 
         input_ids = prompt_ids + reply_ids
         if len(input_ids) > config["max_seq_length"]:
@@ -84,16 +112,6 @@ validation_conversations, training_conversations = shuffled[:held_out], shuffled
 examples = [example for conversation in training_conversations for example in build_examples(conversation)]
 validation_examples = [example for conversation in validation_conversations for example in build_examples(conversation)]
 random.shuffle(examples)
-
-# The prompt for a final turn must match what the chat template produces for
-# the full conversation, or training and inference formats have drifted apart.
-sample = [system_message] + conversations[0]["messages"]
-expected = tokenizer.apply_chat_template(sample, tokenize=False, enable_thinking=False)
-rebuilt = tokenizer.apply_chat_template(
-    sample[:-1], tokenize=False, add_generation_prompt=True, enable_thinking=False
-) + sample[-1]["content"] + "<|im_end|>\n"
-if expected != rebuilt:
-    raise ValueError("Training format does not match the Qwen3 chat template.")
 
 
 def collate(batch):
@@ -129,6 +147,8 @@ model = get_peft_model(model, LoraConfig(
 reply_tokens = sum(sum(label != -100 for label in example["labels"]) for example in examples)
 print(f"Conversations: {len(training_conversations)} training, {len(validation_conversations)} validation")
 print(f"Training examples (assistant turns): {len(examples)}, validation examples: {len(validation_examples)}")
+tool_turns = sum(bool(message.get("tool_calls")) for conversation in training_conversations for message in conversation["messages"])
+print(f"Tool-call turns in training: {tool_turns}")
 print(f"Longest example: {max(len(example['input_ids']) for example in examples)} tokens")
 print(f"Scored reply tokens: {reply_tokens}")
 print(f"Device: {'cuda' if torch.cuda.is_available() else 'cpu'}, bf16: {use_bf16}")

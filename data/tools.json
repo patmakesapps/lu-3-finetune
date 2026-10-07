@@ -1,0 +1,121 @@
+{
+  "get_time": {
+    "type": "function",
+    "function": {
+      "name": "get_time",
+      "description": "Get the current local date, time, and timezone.",
+      "parameters": {"type": "object", "properties": {}, "required": []}
+    }
+  },
+  "get_machine_info": {
+    "type": "function",
+    "function": {
+      "name": "get_machine_info",
+      "description": "Get the hostname, operating system, CPU architecture, and Python version of the machine running you.",
+      "parameters": {"type": "object", "properties": {}, "required": []}
+    }
+  },
+  "get_weather": {
+    "type": "function",
+    "function": {
+      "name": "get_weather",
+      "description": "Get the current weather and today's forecast for the home's location.",
+      "parameters": {"type": "object", "properties": {}, "required": []}
+    }
+  },
+  "set_timer": {
+    "type": "function",
+    "function": {
+      "name": "set_timer",
+      "description": "Start a countdown timer that chimes when it finishes.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "minutes": {"type": "number", "description": "Length of the timer in minutes."},
+          "label": {"type": "string", "description": "Optional name for the timer, such as pasta."}
+        },
+        "required": ["minutes"]
+      }
+    }
+  },
+  "set_lights": {
+    "type": "function",
+    "function": {
+      "name": "set_lights",
+      "description": "Turn the smart lights in a room on or off, or set their brightness.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "room": {"type": "string", "description": "Room name, such as kitchen or living room."},
+          "on": {"type": "boolean", "description": "True to turn on, false to turn off."},
+          "brightness": {"type": "integer", "description": "Optional brightness from 1 to 100."}
+        },
+        "required": ["room", "on"]
+      }
+    }
+  },
+  "play_music": {
+    "type": "function",
+    "function": {
+      "name": "play_music",
+      "description": "Play a song, artist, album, or genre on the home speaker.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {"type": "string", "description": "What to play."}
+        },
+        "required": ["query"]
+      }
+    }
+  },
+  "set_volume": {
+    "type": "function",
+    "function": {
+      "name": "set_volume",
+      "description": "Set Lu's speaking volume.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "level": {"type": "integer", "description": "Volume from 0 to 10."}
+        },
+        "required": ["level"]
+      }
+    }
+  },
+  "get_battery": {
+    "type": "function",
+    "function": {
+      "name": "get_battery",
+      "description": "Get Lu's battery charge percentage and whether it is charging.",
+      "parameters": {"type": "object", "properties": {}, "required": []}
+    }
+  },
+  "search_web": {
+    "type": "function",
+    "function": {
+      "name": "search_web",
+      "description": "Search the web and return short snippets from the top results.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {"type": "string", "description": "The search query."}
+        },
+        "required": ["query"]
+      }
+    }
+  },
+  "rotate_head": {
+    "type": "function",
+    "function": {
+      "name": "rotate_head",
+      "description": "Rotate Lu's dome head to face a direction.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "degrees": {"type": "integer", "description": "Clockwise rotation from facing forward, 0 to 359."}
+        },
+        "required": ["degrees"]
+      }
+    }
+  }
+}

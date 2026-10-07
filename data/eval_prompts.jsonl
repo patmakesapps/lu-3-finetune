@@ -48,3 +48,9 @@
 {"category": "speech", "messages": [{"role": "user", "content": "can you recommend a book for my nephew he's into dine a sores"}]}
 {"category": "speech", "messages": [{"role": "user", "content": "what goes good with stake for dinner"}]}
 {"category": "speech", "messages": [{"role": "user", "content": "lou are you still up"}]}
+{"category": "tools", "messages": [{"role": "user", "content": "what time is it"}]}
+{"category": "tools", "messages": [{"role": "user", "content": "lu whats the date today"}]}
+{"category": "tools", "messages": [{"role": "user", "content": "what computer are you actually running on?"}]}
+{"category": "tools", "messages": [{"role": "user", "content": "is it gonna rain today"}]}
+{"category": "tools", "messages": [{"role": "user", "content": "turn off the kitchen lights"}]}
+{"category": "tools", "messages": [{"role": "user", "content": "what's your favorite time of day"}]}

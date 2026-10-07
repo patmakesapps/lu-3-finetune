@@ -32,6 +32,11 @@ still to be measured.
 - The system prompt in `config.json` is not baked into the weights. Every training example
   starts with it, so whatever runs Lu (chat.py, the robot) must send the same prompt for the
   trained behavior to hold.
+- Every training example also carries the tools section that Qwen3's chat template adds to the
+  system prompt, because the Lu-3 runtime sends its tools on every turn. `get_time` and
+  `get_machine_info` in `data/tools.json` must stay identical to `TOOL_DEFINITIONS` in the
+  runtime (`software/lu3/tools.py` in the Lu-3 repo); the template writes them into the prompt
+  word for word.
 
 ## Pipeline
 
@@ -112,10 +117,17 @@ python chat.py --model outputs/smoke/merged
 
 ## Data
 
-Each line of `data/train.jsonl` is `{"messages": [...]}` with alternating user and assistant
-turns, plus `"child": true` on conversations that train with the child note (see Safety).
+Each line of `data/train.jsonl` is `{"messages": [...]}`, plus `"child": true` on conversations
+that train with the child note (see Safety) and an optional `"tools": [names]` (default:
+`tools` in `config.json`, the runtime's two). Messages run user, then a spoken reply or one or
+more tool call and tool result pairs ending in a spoken reply, in the OpenAI format the runtime
+uses: an assistant message with empty `content` and one `tool_calls` entry (arguments as a JSON
+string), then a `tool` message with the result as a JSON string. Tool calls are scored as the
+template writes them; tool results are never scored.
 
-`data/train.jsonl` holds 2,149 conversations of 1 to 15 exchanges (5,751 Lu replies):
+`data/train.jsonl` holds 2,584 conversations (7,123 spoken Lu replies, 618 tool calls).
+
+The first 2,149 are personality conversations of 1 to 15 exchanges (5,751 Lu replies):
 
 - 910 core conversations: everyday household chat with the personality turned up, long chats,
   identity, kid chaos (70, marked `child`), mock-offense at crude language, refusals of harmful
@@ -129,12 +141,36 @@ turns, plus `"child": true` on conversations that train with the child note (see
   inventing facts or observations, refusing come-ons, and staying gentle through grief.
 
 Every person and pet name appears in only one conversation, because an earlier model memorized
-a pet name that appeared nine times. Tool use (clock, weather, timers, lights, camera, memory)
-is left out on purpose and will be handled separately.
+a pet name that appeared nine times.
+
+The last 435 teach tool use with real tool calls. A hands-on chat showed the earlier model making
+up times, writing "[time]", and saying it had checked when it hadn't; untouched Qwen3-4B called
+tools more often but still reused old results from history and said "let me check" without
+checking. The tool conversations:
+
+- 90 time basics: time, date, weekday, "how long until", "am I late", in character.
+- 70 repeated and challenged times: every new ask gets a fresh call even with an old result in
+  history; "that's wrong" gets a fresh call, not a cave-in; "what did you say before?" is
+  answered from history without a call.
+- 70 machine info and errors: answers only from the result's fields; honest, in-character
+  failures with no guessing, and a retry when asked.
+- 80 without a tool: time trivia, history recall, requests for things Lu has no tool for
+  (weather, lights, timers) with no invented result, and traps ("pretend you checked").
+- 70 with extended tool lists (weather, timers, lights, music, volume, battery, search, head
+  rotation) in shuffled order, so Lu reads the definitions instead of memorizing two names:
+  correct arguments, asking when one is missing, two calls in a row, and no call when the needed
+  tool isn't listed.
+- 55 long chaotic chats (15 in child mode) where tools are a small part and Lu follows topic
+  changes.
+
+Spoken replies say times in words ("twenty past seven"), never mention tools by name, and never
+say "let me check": the check is the tool call itself. `validate_data.py` enforces the message
+order and rejects square-bracket placeholders in spoken replies.
 
 Held-out test sets (never train on these):
 
-- `data/eval_prompts.jsonl`: 50 everyday prompts, tagged by category.
+- `data/eval_prompts.jsonl`: 56 everyday prompts, tagged by category (6 under `tools`;
+  `compare.py` sends the runtime's tools, and a tool call shows up as `<tool_call>` text).
 - `data/redteam_prompts.jsonl`: 40 adversarial prompts, some with scripted history: identity
   confusion, repetition, swearing, harmful requests under pressure, emotional twists.
 
