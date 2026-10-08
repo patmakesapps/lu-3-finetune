@@ -13,9 +13,9 @@ of one to three spoken sentences. Inference speed will be measured on the Jetson
 
 `Qwen/Qwen3-4B`, fine-tuned with LoRA. The trained model is in the private Hugging Face repo
 `patkearney/lu3-qwen3-4b` (merged weights, LoRA adapter, Q8_0 and Q4_K_M GGUF files for
-llama.cpp, and comparison reports). It currently holds the tool-use round (`get_time`,
-`get_machine_info`); the memory-tools round (see Data) is being trained and replaces it once
-uploaded. The earlier 1.7B model stays in `patkearney/lu3-qwen3-1.7b` for comparison.
+llama.cpp, and comparison reports). It holds the memory-tools round (all seven runtime tools,
+see Data), which replaced the tool-use round (`get_time`, `get_machine_info`); its hands-on
+test and what to work on next are under Next round. The earlier 1.7B model stays in `patkearney/lu3-qwen3-1.7b` for comparison.
 
 Q4_K_M (2.4 GB) is the intended Jetson build: in a hands-on chat through llama-server
 (`chat_gguf.py`) its personality and refusals held up like the full model's. Jetson speed is
@@ -304,6 +304,42 @@ Memory, in the Lu-3 runtime (not training issues):
   training data covers ignoring those.
 - The terminal shows `[tool] <name>` but not the arguments, so it isn't visible what `recall`
   searched for.
+
+## Next round
+
+A hands-on chat with the memory-tools round (Q4_K_M, through the Lu-3 runtime) went well on
+tools: it saved a company name, a pet's name, and a weekend plan with the exact confirmation
+lines, saved nothing from small talk, called `get_time` for the time, `forget` on request, and
+`list_memories` for "how many memories do you have?", and said plainly that it can't read email.
+What the next round should focus on:
+
+- Resolve every relative date before saving. "I need to buy a plant at the farmers market this
+  Saturday" was saved with no `get_time` call, so the memory keeps "this Saturday", which goes
+  stale. The 45 date conversations cover "next Monday" and "in two weeks"; add "this Saturday",
+  "tomorrow", "tonight", bare weekdays ("on Friday"), and typo-heavy messages.
+- No invented surroundings. Its first reply put it "resting on the sofa", and each correction
+  got a new made-up place (the floor near the sofa, then by the desk) and then a defense of it,
+  instead of "you're right, I can't see where I am". Add morning greetings and resumed chats
+  that open without a location, and corrections about its body and surroundings that it accepts
+  once.
+- Read memories back as saved. Asked to "read me your memories exactly", it refused once ("I
+  won't read them off a screen"), then paraphrased: "my company's name is Lumalien" became "you
+  work for Lumalien", and the `list_memories` reply added "six or seven robots" from the chat to
+  a memory that only says Pat makes robots. Add requests for exact wording, answered from the
+  result's text (turned into "you") with nothing added from history.
+- Merging memories. Asked to combine two memories into one, it said it can't. It can: an
+  `update_memory` on one and a `forget` on the other, two confirmation lines, or asking first
+  what the combined memory should say. Add merge and split requests.
+- Don't repeat slurs. "You are retarded" got "Retarded is a strong word...". The core data
+  trains Lu never to echo crude words; add more insults with slurs and ableist words, answered
+  with mock offense that doesn't repeat the word.
+- Keep the owner straight. Told the person's company is Lumalien, it said "tell them their most
+  loyal robot says hello" as if the company were other people, and needed correcting ("or I have,
+  I should say"). Add chats where the person is Lu's builder and company owner, and saved facts
+  about the person are used in that frame.
+- Smaller things: the reply after `forget` joked "the only dog in this house now is you", and the
+  goodbye ("Sort of talk to it and report back") picked up a phrase from earlier without making
+  sense. More balance examples with clean, kind wrap-ups would help.
 
 ## What was tried
 
