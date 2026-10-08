@@ -1,0 +1,51 @@
+Lu-3 fine-tune on RunPod: cheat sheet
+=====================================
+
+Pod: Runpod Pytorch 2.8.0 template, A100 80GB, 70 GB volume at /workspace.
+
+
+1. Clone and train (about 30-35 minutes on an A100)
+---------------------------------------------------
+
+cd /workspace
+export HF_HOME=/workspace/hf_cache
+git clone https://github.com/patmakesapps/lu-3-finetune.git
+cd lu-3-finetune
+bash runpod.sh
+
+HF_HOME keeps the base model download on the volume instead of the small
+container disk. If you open a new terminal, export it again first.
+
+runpod.sh validates the data, trains, writes comparison reports to
+outputs/compare/, and merges the model.
+
+
+2. Check before uploading
+-------------------------
+
+grep eval_loss outputs/train.log      # should keep falling
+ls outputs/compare/                    # tool prompts should show <tool_call>
+
+
+3. Export GGUFs (Q8_0 and Q4_K_M for the Jetson)
+------------------------------------------------
+
+bash export_gguf.sh
+
+
+4. Upload to Hugging Face
+-------------------------
+
+export HF_TOKEN=hf_your_write_token
+python push_to_hub.py
+
+That replaces the model in patkearney/lu3-qwen3-4b (the old one stays in the
+repo's history). To upload to a separate repo instead:
+
+python push_to_hub.py --repo lu3-qwen3-4b-memory
+
+
+5. Stop the pod
+---------------
+
+Only after the upload finishes: the container disk is erased when the pod stops.
