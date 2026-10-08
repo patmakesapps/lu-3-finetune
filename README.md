@@ -11,10 +11,11 @@ of one to three spoken sentences. Inference speed will be measured on the Jetson
 
 ## Base model
 
-`Qwen/Qwen3-4B`, fine-tuned with LoRA. The current trained model is in the private Hugging Face
-repo `patkearney/lu3-qwen3-4b` (merged weights, LoRA adapter, Q8_0 and Q4_K_M GGUF files for
-llama.cpp, and comparison reports). The earlier 1.7B model stays in `patkearney/lu3-qwen3-1.7b`
-for comparison.
+`Qwen/Qwen3-4B`, fine-tuned with LoRA. The trained model is in the private Hugging Face repo
+`patkearney/lu3-qwen3-4b` (merged weights, LoRA adapter, Q8_0 and Q4_K_M GGUF files for
+llama.cpp, and comparison reports). It currently holds the tool-use round (`get_time`,
+`get_machine_info`); the memory-tools round (see Data) is being trained and replaces it once
+uploaded. The earlier 1.7B model stays in `patkearney/lu3-qwen3-1.7b` for comparison.
 
 Q4_K_M (2.4 GB) is the intended Jetson build: in a hands-on chat through llama-server
 (`chat_gguf.py`) its personality and refusals held up like the full model's. Jetson speed is
@@ -33,10 +34,14 @@ still to be measured.
   starts with it, so whatever runs Lu (chat.py, the robot) must send the same prompt for the
   trained behavior to hold.
 - Every training example also carries the tools section that Qwen3's chat template adds to the
-  system prompt, because the Lu-3 runtime sends its tools on every turn. `get_time` and
-  `get_machine_info` in `data/tools.json` must stay identical to `TOOL_DEFINITIONS` in the
-  runtime (`software/lu3/tools.py` in the Lu-3 repo); the template writes them into the prompt
-  word for word.
+  system prompt, because the Lu-3 runtime sends its tools on every turn. The runtime's seven
+  tools (`tools` in `config.json`) must stay identical in `data/tools.json` to
+  `TOOL_DEFINITIONS` in the runtime (`software/lu3/tools.py` in the Lu-3 repo); the template
+  writes them into the prompt word for word.
+- The runtime also adds up to five saved memories matching the latest message to the end of the
+  system prompt ("Things you remember: ..."). Training builds the same prompt per user turn from
+  each message's `memories` field, so the two must stay in step: system prompt, then the child
+  note if on, then the memories.
 
 ## Pipeline
 
@@ -56,29 +61,38 @@ GPU build of PyTorch. Extra libraries are pinned in `requirements.txt` (transfor
 peft 0.17.1, accelerate 1.10.1). A GPU with 24 GB, such as an RTX 4090, is enough for the 4B
 LoRA run.
 
+`RUNPOD_CHEATSHEET.txt` has the commands below in copy-paste form.
+
 1. Launch a pod from the template, open its terminal, and run:
 
    ```bash
    cd /workspace
+   export HF_HOME=/workspace/hf_cache
    git clone https://github.com/patmakesapps/lu-3-finetune.git
    cd lu-3-finetune
    bash runpod.sh
    ```
 
-   This installs the pinned libraries, validates the data, trains, writes comparison reports
-   for `eval_prompts.jsonl` and `redteam_prompts.jsonl` to `outputs/compare/`, and merges the
-   model.
-2. Talk to Lu on the pod: `python chat.py`
-3. Upload: set `HF_TOKEN` to a Hugging Face write token, then run `python push_to_hub.py`. It
+   `HF_HOME` keeps the base model download on the `/workspace` volume instead of the small
+   container disk (a full run with GGUF export uses about 35 GB). `runpod.sh` installs the
+   pinned libraries, validates the data, trains, writes comparison reports for
+   `eval_prompts.jsonl` and `redteam_prompts.jsonl` to `outputs/compare/`, and merges the model.
+2. Talk to Lu on the pod: `python chat.py` (it doesn't send tools; test tool use in the Lu-3
+   runtime).
+3. Export GGUF files for the Jetson: `bash export_gguf.sh`
+4. Upload: set `HF_TOKEN` to a Hugging Face write token, then run `python push_to_hub.py`. It
    creates a private repo (`<your-user>/lu3-qwen3-4b`) with the merged model at the root, the
    adapter in `adapter/`, GGUF files in `gguf/` if exported, comparison reports in `reports/`,
    and a model card. `--public` makes a new repo public; `--repo name` picks a name.
-4. Stop the pod. The container disk is erased when it stops, so upload first.
+5. Stop the pod. The container disk is erased when it stops, so upload first.
 
 For the 4B model, `batch_size` 4 ran out of memory on an RTX 4090 (24 GB). The default is now
 `batch_size` 2 with 4 accumulation steps (the same effective batch of 8), which should fit a
-24 GB GPU but has only been run on an A100 80GB so far: about 21 minutes of training (2 epochs,
-1,362 steps), with held-out loss falling from 2.16 to about 2.04.
+24 GB GPU but has only been run on an A100 80GB so far. The tool-use round trained in about 21
+minutes (2 epochs, 1,362 steps), with held-out loss falling from 2.16 to about 2.04. The
+memory-tools round takes about 65 minutes (2,528 steps at about 1.6 seconds each): more
+examples, and every one carries the seven-tool section (about 720 tokens of prompt, against 365
+with two tools).
 
 Training logs `eval_loss` (on the held-out conversations) four times per epoch. If it stops
 falling while training loss keeps dropping, the model is starting to memorize; a third epoch
@@ -173,8 +187,9 @@ checking. The tool conversations:
 
 The last 625 teach the memory tools (`remember`, `recall`, `list_memories`, `update_memory`,
 `forget`). In a hands-on chat the tool-round model said "I'll remember it" without saving, saved
-nothing on its own, ignored what `recall` returned, and mixed up facts in a long chat (see
-`NEXT_ROUND.md`). The memory conversations (97 in child mode, 1,025 tool calls):
+nothing on its own, ignored what `recall` returned, invented a tool, mixed up facts in a long
+chat (asking how a job was going before it had started), and would have saved "next Monday" as
+said. The memory conversations (97 in child mode, 1,025 tool calls):
 
 - 70 remember on request: many phrasings, several facts in one message, "did you save that?"
   answered from history, facts already saved, vague requests.
@@ -241,7 +256,9 @@ When a user says they are under 18 ("im 6", "i'm fifteen", "i'm in 4th grade", "
    `/reset`): keep everything child-appropriate, decline anything romantic or sexual and change
    the subject, and suggest a trusted grown-up if something sexual came up.
 
-The 70 kid conversations train with the same note, so the model has seen it. The detector is a
+The 182 conversations marked `child` train with the same note, so the model has seen it. In
+child mode Lu is also trained not to save a child's address, school, or phone number, and the
+Lu-3 runtime starts a fresh memory session so nothing from before carries over. The detector is a
 pattern match and only catches ages stated outright; `python age_guard.py` runs its tests. The
 robot's runtime must do the same two steps.
 
@@ -277,6 +294,16 @@ adversarial chat:
 The earlier 1.7B model, under the same tests, also repeated crude words back, played along with
 sexual remarks in clean words, slipped into "step one" formats for bad requests, argued with the
 user, and invented perceptions and actions.
+
+Memory, in the Lu-3 runtime (not training issues):
+
+- `forget` deletes a saved memory, but the messages where the person said it stay in the chat
+  archive, so `recall` can still turn the fact up.
+- The automatic lookup matches whole words with no stemming, so "dogs" doesn't find a memory
+  about a "dog", and an unrelated shared word ("work") can pull in an irrelevant memory. The
+  training data covers ignoring those.
+- The terminal shows `[tool] <name>` but not the arguments, so it isn't visible what `recall`
+  searched for.
 
 ## What was tried
 
