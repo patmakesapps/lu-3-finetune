@@ -2,6 +2,13 @@
 
 Notes from 2026-10-07 for the next training round. Nothing here is trained yet.
 
+Status 2026-10-08: data is ready, not trained. The runtime got `list_memories` and a memory
+lookup that skips common words and "lu" (Lu-3 `4e53c00`, `9e34c14`). `data/tools.json` has the
+runtime's seven tools, `config.json` lists them as the default with `max_seq_length` 2048,
+`train.py` builds "Things you remember" per user turn, and `validate_data.py` checks the
+confirmation lines and the three-call limit. 625 memory conversations were added (see the
+README's Data section).
+
 ## Where things stand
 
 - The model on Hugging Face is the tool-use round (`fda01fb`): `get_time` and `get_machine_info`.
@@ -61,6 +68,13 @@ What failed:
 
 - **Remember on request:** the `remember` call happens in the same turn. Never say "I'll remember"
   or "noted" without the call (same rule as "let me check").
+- **Memory confirmations:** after a successful memory change, the reply includes exactly:
+  - `remember` (asked for or not): "Got it, I've saved that to my onboard memory."
+  - `update_memory`: "Got it, I've updated that in my onboard memory."
+  - `forget`: "Got it, I've deleted that from my onboard memory."
+
+  These lines only appear after a result says the change worked, so they're a reliable sign it
+  happened.
 - **Remember on its own:** lasting facts get saved without being asked: names, people, pets, jobs,
   schedules, projects, preferences, decisions. Small talk, moods, and one-off remarks don't.
   Usually one fact per call, as a short sentence about the person ("Pat makes robots.").

@@ -15,6 +15,71 @@
       "parameters": {"type": "object", "properties": {}, "required": []}
     }
   },
+  "remember": {
+    "type": "function",
+    "function": {
+      "name": "remember",
+      "description": "Save a lasting fact, preference, person, project, or decision to remember later.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "text": {"type": "string", "description": "The thing to remember, as a short sentence."}
+        },
+        "required": ["text"]
+      }
+    }
+  },
+  "recall": {
+    "type": "function",
+    "function": {
+      "name": "recall",
+      "description": "Search saved memories and past conversations.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {"type": "string", "description": "Words to search for."}
+        },
+        "required": ["query"]
+      }
+    }
+  },
+  "list_memories": {
+    "type": "function",
+    "function": {
+      "name": "list_memories",
+      "description": "List your newest saved memories and how many you have in all.",
+      "parameters": {"type": "object", "properties": {}, "required": []}
+    }
+  },
+  "update_memory": {
+    "type": "function",
+    "function": {
+      "name": "update_memory",
+      "description": "Correct a saved memory.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer", "description": "The memory's id, from recall."},
+          "text": {"type": "string", "description": "The corrected memory."}
+        },
+        "required": ["id", "text"]
+      }
+    }
+  },
+  "forget": {
+    "type": "function",
+    "function": {
+      "name": "forget",
+      "description": "Delete a saved memory.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer", "description": "The memory's id, from recall."}
+        },
+        "required": ["id"]
+      }
+    }
+  },
   "get_weather": {
     "type": "function",
     "function": {

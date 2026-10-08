@@ -27,19 +27,25 @@ torch.manual_seed(config["seed"])
 tokenizer = AutoTokenizer.from_pretrained(config["base_model"])
 system_message = {"role": "system", "content": config["system_prompt"]}
 
-# Tool definitions by name. get_time and get_machine_info must stay identical
-# to TOOL_DEFINITIONS in the Lu-3 runtime (software/lu3/tools.py): the template
-# writes them into every system prompt, and the runtime sends them every turn.
+# Tool definitions by name. The runtime's tools (config "tools") must stay
+# identical to TOOL_DEFINITIONS in the Lu-3 runtime (software/lu3/tools.py):
+# the template writes them into every system prompt, and the runtime sends
+# them every turn.
 with (project_dir / "data" / "tools.json").open(encoding="utf-8") as file:
     tool_library = json.load(file)
 
 
-def system_for(conversation):
-    # Conversations marked "child" train with the same child note chat.py adds
-    # once a user says they're under 18 (see age_guard.py).
+def system_for(conversation, memories=()):
+    # Built the way the runtime's brain.py builds it: conversations marked
+    # "child" add the child note chat.py adds once a user says they're under
+    # 18 (see age_guard.py), then any memories the runtime found for the
+    # latest user message.
+    content = config["system_prompt"]
     if conversation.get("child"):
-        return {"role": "system", "content": config["system_prompt"] + " " + config["child_note"]}
-    return system_message
+        content += " " + config["child_note"]
+    if memories:
+        content += " Things you remember: " + " ".join(memories)
+    return {"role": "system", "content": content}
 
 
 def tools_for(conversation):
@@ -59,12 +65,20 @@ def build_examples(conversation):
     The reply is cut from the template's own rendering of the conversation up
     to that turn, so tool calls are scored exactly as the template writes them
     (<tool_call> JSON </tool_call>). Tool results are prompt only, never scored.
+
+    A user message may carry "memories": the runtime adds them to the system
+    prompt for every request it makes while answering that message.
     """
-    messages = [system_for(conversation)] + conversation["messages"]
+    messages = [system_for(conversation)] + [
+        {key: value for key, value in message.items() if key != "memories"}
+        for message in conversation["messages"]
+    ]
     tools = tools_for(conversation)
     examples = []
 
     for index, message in enumerate(messages):
+        if message["role"] == "user":
+            messages[0] = system_for(conversation, conversation["messages"][index - 1].get("memories", ()))
         if message["role"] != "assistant":
             continue
 

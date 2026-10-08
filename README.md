@@ -119,13 +119,21 @@ python chat.py --model outputs/smoke/merged
 
 Each line of `data/train.jsonl` is `{"messages": [...]}`, plus `"child": true` on conversations
 that train with the child note (see Safety) and an optional `"tools": [names]` (default:
-`tools` in `config.json`, the runtime's two). Messages run user, then a spoken reply or one or
+`tools` in `config.json`, the runtime's seven). Messages run user, then a spoken reply or one or
 more tool call and tool result pairs ending in a spoken reply, in the OpenAI format the runtime
 uses: an assistant message with empty `content` and one `tool_calls` entry (arguments as a JSON
 string), then a `tool` message with the result as a JSON string. Tool calls are scored as the
-template writes them; tool results are never scored.
+template writes them; tool results are never scored. A user message may carry `"memories": [...]`:
+the runtime's automatic lookup for that message, added to the system prompt after "Things you
+remember:" for every request made while answering it, exactly as the runtime's `brain.py` does.
 
-`data/train.jsonl` holds 2,584 conversations (7,123 spoken Lu replies, 618 tool calls).
+`data/train.jsonl` holds 3,209 conversations (9,040 spoken Lu replies, 1,643 tool calls).
+
+The memory tools changed the default tool list from two tools to seven. 1,352 of the older
+conversations mention lasting personal facts (names, pets, jobs, birthdays) or memory without
+saving anything, which would teach "don't save" now that `remember` is listed, so they are
+pinned to the old two-tool list (`get_time`, `get_machine_info`). The other 1,162 have no such
+facts and train with the runtime's seven.
 
 The first 2,149 are personality conversations of 1 to 15 exchanges (5,751 Lu replies):
 
@@ -163,9 +171,44 @@ checking. The tool conversations:
 - 55 long chaotic chats (15 in child mode) where tools are a small part and Lu follows topic
   changes.
 
+The last 625 teach the memory tools (`remember`, `recall`, `list_memories`, `update_memory`,
+`forget`). In a hands-on chat the tool-round model said "I'll remember it" without saving, saved
+nothing on its own, ignored what `recall` returned, and mixed up facts in a long chat (see
+`NEXT_ROUND.md`). The memory conversations (97 in child mode, 1,025 tool calls):
+
+- 70 remember on request: many phrasings, several facts in one message, "did you save that?"
+  answered from history, facts already saved, vague requests.
+- 80 remember on its own: lasting facts saved mid-chat without being asked; 25 chats with only
+  small talk, moods, and one-off remarks where nothing is saved; changed facts updated.
+- 45 dates: relative dates ("next Monday", "in two weeks") get a `get_time` call and are saved
+  as real dates ("on Monday, October 13, 2025"); countdowns from saved dates; date corrections.
+- 65 recall: answers only from the result, plain "nothing on that" when empty, past
+  conversations, partial results with no guessing.
+- 75 listing and tool questions: "what do you know about me", counts past the newest twenty,
+  an empty memory, "what can you do" in plain words, and 26 with shuffled extended tool lists
+  (no list tool: search by name; no save tool: honest that it can't save).
+- 50 corrections: `recall` then `update_memory`, or the id from an earlier save in the chat.
+- 45 forgetting: `recall` then `forget`, nothing found, ambiguous matches, "forget everything".
+- 75 "Things you remember": injected memories used with no call and no added detail, and
+  irrelevant ones (pulled in by a shared word) ignored.
+- 60 history accuracy: chats resumed after a restart where upcoming things stay upcoming, long
+  detail-heavy chats, and the person as Lu's builder.
+- 60 more: child-mode memory (no addresses, schools, or phone numbers saved), tool errors with
+  honest replies and retries, and passwords, PINs, and card numbers declined.
+
+After a memory change that worked, the reply starts with a fixed line, so the person can tell it
+really happened: "Got it, I've saved that to my onboard memory." (`remember`), "Got it, I've
+updated that in my onboard memory." (`update_memory`), "Got it, I've deleted that from my onboard
+memory." (`forget`). No reply claims a change any other way. Saved text is a short third-person
+sentence ("Mara's dog is named Biscuit.", or "The user ..." when no name is known). Every memory
+conversation was replayed through the runtime's own `memory.py` (SQLite and FTS5), so its
+injected memories, ids, and `recall`/`list_memories` results are exactly what the robot would
+produce.
+
 Spoken replies say times in words ("twenty past seven"), never mention tools by name, and never
 say "let me check": the check is the tool call itself. `validate_data.py` enforces the message
-order and rejects square-bracket placeholders in spoken replies.
+order, at most three tool calls per user message (the runtime's agent loop limit), and the
+confirmation lines, and rejects square-bracket placeholders in spoken replies.
 
 Held-out test sets (never train on these):
 

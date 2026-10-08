@@ -26,6 +26,29 @@ for name, definition in tool_library.items():
 # a tool, so no spoken reply may contain one, and none may hold tool-call markup.
 placeholder = re.compile(r"\[[^\]]*\]|<tool_call>|</tool_call>|<tool_response>")
 
+# The runtime's agent loop makes at most four requests per user message, so
+# three tool calls is the most that can still end in a spoken reply.
+max_calls_per_turn = 3
+
+# After a memory change that worked, the spoken reply says so with the tool's
+# fixed line, and no reply says it without one: the line is how the person
+# knows the change really happened.
+confirmations = {
+    "remember": "Got it, I've saved that to my onboard memory.",
+    "update_memory": "Got it, I've updated that in my onboard memory.",
+    "forget": "Got it, I've deleted that from my onboard memory.",
+}
+
+
+def memory_change_worked(name, result):
+    if name == "remember":
+        return "id" in result and "error" not in result
+    if name == "update_memory":
+        return result.get("updated") is True
+    if name == "forget":
+        return result.get("forgotten") is True
+    return False
+
 conversation_count = 0
 reply_count = 0
 tool_call_count = 0
@@ -48,7 +71,7 @@ def check_tool_call(line_number, message, tool_names):
     if not isinstance(function.get("arguments"), str) or not isinstance(json.loads(function["arguments"]), dict):
         raise ValueError(f"Line {line_number}: tool arguments must be a JSON object string.")
 
-    return call["id"]
+    return call["id"], function["name"]
 
 
 with data_path.open(encoding="utf-8") as file:
@@ -73,6 +96,9 @@ with data_path.open(encoding="utf-8") as file:
         # tool call -> tool result pairs that ends in a spoken reply.
         previous = None
         pending_call_id = None
+        pending_call_name = None
+        calls_this_turn = 0
+        changes_this_turn = set()
 
         for message in messages:
             if not isinstance(message, dict):
@@ -86,13 +112,21 @@ with data_path.open(encoding="utf-8") as file:
                 content = message.get("content")
                 if not isinstance(content, str) or not content.strip():
                     raise ValueError(f"Line {line_number}: message content must be nonempty text.")
+                memories = message.get("memories", [])
+                if not isinstance(memories, list) or not all(isinstance(m, str) and m.strip() for m in memories):
+                    raise ValueError(f"Line {line_number}: memories must be a list of nonempty strings.")
+                calls_this_turn = 0
+                changes_this_turn = set()
                 previous = "user"
 
             elif role == "assistant" and "tool_calls" in message:
                 if previous not in ("user", "tool"):
                     raise ValueError(f"Line {line_number}: a tool call must follow a user message or a tool result.")
-                pending_call_id = check_tool_call(line_number, message, tool_names)
+                pending_call_id, pending_call_name = check_tool_call(line_number, message, tool_names)
                 tool_call_count += 1
+                calls_this_turn += 1
+                if calls_this_turn > max_calls_per_turn:
+                    raise ValueError(f"Line {line_number}: more than {max_calls_per_turn} tool calls for one user message.")
                 previous = "tool_call"
 
             elif role == "assistant":
@@ -103,6 +137,10 @@ with data_path.open(encoding="utf-8") as file:
                     raise ValueError(f"Line {line_number}: message content must be nonempty text.")
                 if placeholder.search(content):
                     raise ValueError(f"Line {line_number}: spoken reply contains a placeholder or tool markup: {content!r}")
+                said = {name for name, line in confirmations.items() if line in content}
+                if said != changes_this_turn or (said and not content.startswith(tuple(confirmations.values()))):
+                    raise ValueError(f"Line {line_number}: a reply must start with the confirmation line of each "
+                                     f"memory change that worked this turn, and only those: {content!r}")
                 reply_count += 1
                 previous = "reply"
 
@@ -113,6 +151,8 @@ with data_path.open(encoding="utf-8") as file:
                     raise ValueError(f"Line {line_number}: tool result id does not match the tool call.")
                 if not isinstance(message.get("content"), str) or not isinstance(json.loads(message["content"]), dict):
                     raise ValueError(f"Line {line_number}: tool result content must be a JSON object string.")
+                if memory_change_worked(pending_call_name, json.loads(message["content"])):
+                    changes_this_turn.add(pending_call_name)
                 previous = "tool"
 
             else:
